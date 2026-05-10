@@ -1,0 +1,1205 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>答案桌遊・人類圖解讀系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#FDF6EC;--parchment:#F5E6D0;
+  --amber:#C8874A;--amber-l:#E8A96A;--amber-d:#8B5E2E;
+  --sage:#7A9E7E;--sage-d:#4A6B4E;
+  --rose:#C97B84;--rose-d:#8B4A52;
+  --lav:#9B8EC4;--lav-d:#5E4A8B;
+  --sky:#6A9EC0;--sky-d:#2E5E8B;
+  --text:#3D2B1F;--text-s:#7A5C48;--text-f:#B09080;
+  --border:#E8D5BE;--border-d:#C8A882;
+  --white:#FFFDF9;--gold:#C8A84B;
+}
+body{background:var(--cream);font-family:'Noto Sans TC',sans-serif;color:var(--text);min-height:100vh;}
+input,textarea,select{font-family:'Noto Sans TC',sans-serif;font-size:14px;color:var(--text);background:var(--white);border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;width:100%;outline:none;transition:border-color .2s;-webkit-appearance:none;}
+input:focus,textarea:focus,select:focus{border-color:var(--amber);}
+button{font-family:'Noto Sans TC',sans-serif;cursor:pointer;transition:all .15s;}
+.btn{padding:10px 20px;border-radius:12px;font-size:14px;font-weight:500;border:none;line-height:1.4;display:inline-block;}
+.btn-primary{background:linear-gradient(135deg,var(--amber),var(--amber-l));color:var(--white);box-shadow:0 2px 8px #C8874A44;}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;}
+.btn-secondary{background:var(--white);color:var(--amber-d);border:1.5px solid var(--border);}
+.btn-ghost{background:transparent;color:var(--text-s);border:1px dashed var(--border-d);}
+.btn-danger{background:#C97B8422;color:var(--rose-d);border:1px solid var(--rose);}
+.btn-sage{background:linear-gradient(135deg,var(--sage),#9EC8A2);color:var(--white);}
+.card{background:var(--white);border-radius:16px;border:1px solid var(--border);padding:16px;box-shadow:0 2px 12px #8B5E2E0D;}
+.lbl{font-size:12px;color:var(--text-s);margin-bottom:6px;font-weight:500;letter-spacing:.04em;}
+.serif{font-family:'Noto Serif TC',serif;}
+/* Modal */
+.modal-bg{position:fixed;inset:0;background:rgba(61,43,31,.55);display:flex;align-items:flex-end;justify-content:center;z-index:200;}
+.modal-box{width:100%;max-width:560px;background:var(--cream);border-radius:20px 20px 0 0;padding:20px 16px 36px;border:1px solid var(--border);max-height:90vh;overflow-y:auto;}
+.modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px;}
+/* Tags */
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:20px;}
+/* Card grid */
+.card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-height:210px;overflow-y:auto;padding:2px;}
+.card-btn{padding:8px 6px;font-size:12px;border-radius:10px;border:1.5px solid var(--border);background:var(--white);color:var(--text);line-height:1.4;width:100%;}
+.card-btn.selected{font-weight:600;}
+.card-btn.used{background:#f5f5f5;color:#bbb;border-color:#ddd;cursor:not-allowed;text-decoration:line-through;opacity:.55;}
+/* Suit picker */
+.suit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;}
+/* Phase dots */
+.phase-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;border:none;cursor:pointer;}
+/* Sq buttons */
+.sq-btn{padding:10px 6px;border-radius:12px;font-size:12px;font-weight:500;cursor:pointer;line-height:1.4;text-align:center;width:100%;}
+/* Grid layouts */
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+/* Top bar */
+.topbar{background:#FFFDF9CC;backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:10px 16px;position:sticky;top:0;z-index:10;}
+.topbar-inner{max-width:640px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;}
+.main-wrap{max-width:640px;margin:0 auto;padding:16px;}
+/* Hidden */
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════ -->
+<!-- APP ROOT                                           -->
+<!-- ══════════════════════════════════════════════════ -->
+<div id="app"></div>
+
+<script>
+// ── Firebase REST ──────────────────────────────────────
+const DB = "https://joruyagame-default-rtdb.asia-southeast1.firebasedatabase.app";
+const ANTH = "https://api.anthropic.com/v1/messages";
+
+const fbGet = async p => { try{ const r=await fetch(`${DB}/${p}.json`); return r.ok?await r.json():null; }catch{return null;} };
+const fbSet = async (p,v) => { try{ const r=await fetch(`${DB}/${p}.json`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(v)}); return r.ok; }catch{return false;} };
+const fbUpd = async (p,v) => { try{ const r=await fetch(`${DB}/${p}.json`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(v)}); return r.ok; }catch{return false;} };
+const fbTest = async () => { try{ const r=await fetch(`${DB}/.json?shallow=true`); return r.ok; }catch{return false;} };
+
+const genCode = () => {
+  const w=["ROSE","MOON","STAR","WAVE","SAGE","GOLD","IRIS","DAWN","MIST","JADE"];
+  return w[Math.floor(Math.random()*w.length)]+"-"+Math.floor(1000+Math.random()*9000);
+};
+
+// ── 牌卡資料 ──────────────────────────────────────────
+const MAJOR=["愚者","魔術師","女祭司","女皇","皇帝","教皇","戀人","戰車","力量","隱士","命運之輪","正義","倒吊人","死神","節制","惡魔","高塔","星星","月亮","太陽","審判","世界"];
+const MINOR={
+  火:{label:"火（權杖）",color:"#C8874A",cards:["權杖A","權杖2","權杖3","權杖4","權杖5","權杖6","權杖7","權杖8","權杖9","權杖10","權杖侍者","權杖騎士","權杖王后","權杖國王"]},
+  水:{label:"水（聖杯）",color:"#6A9EC0",cards:["聖杯A","聖杯2","聖杯3","聖杯4","聖杯5","聖杯6","聖杯7","聖杯8","聖杯9","聖杯10","聖杯侍者","聖杯騎士","聖杯王后","聖杯國王"]},
+  風:{label:"風（寶劍）",color:"#9B8EC4",cards:["寶劍A","寶劍2","寶劍3","寶劍4","寶劍5","寶劍6","寶劍7","寶劍8","寶劍9","寶劍10","寶劍侍者","寶劍騎士","寶劍王后","寶劍國王"]},
+  土:{label:"土（錢幣）",color:"#7A9E7E",cards:["錢幣A","錢幣2","錢幣3","錢幣4","錢幣5","錢幣6","錢幣7","錢幣8","錢幣9","錢幣10","錢幣侍者","錢幣騎士","錢幣王后","錢幣國王"]},
+};
+const GUIDE={
+  水:{label:"藍・水元素",color:"#6A9EC0",cards:Array.from({length:13},(_,i)=>`水元素指引 ${i+1}`)},
+  土:{label:"綠・土元素",color:"#7A9E7E",cards:Array.from({length:13},(_,i)=>`土元素指引 ${i+1}`)},
+  火:{label:"紅・火元素",color:"#C8874A",cards:Array.from({length:13},(_,i)=>`火元素指引 ${i+1}`)},
+  風:{label:"紫・風元素",color:"#9B8EC4",cards:Array.from({length:13},(_,i)=>`風元素指引 ${i+1}`)},
+};
+const ELEM_START={
+  火:{label:"🔥 火象",signs:"牡羊・獅子・射手"},
+  土:{label:"🌿 土象",signs:"金牛・處女・摩羯"},
+  風:{label:"🌬 風象",signs:"雙子・天秤・水瓶"},
+  水:{label:"💧 水象",signs:"巨蟹・天蠍・雙魚"},
+};
+const HD_TYPES={
+  投射者:"等待邀請：解讀以辨識邀請與等待為核心。",
+  生產者:"回應問句：解讀以回應外部刺激為核心。",
+  顯示生產者:"回應後告知：解讀結合回應與主動推進。",
+  顯示者:"告知後行動：解讀以主動啟動與告知為核心。",
+  反映者:"月循環等待：解讀以觀察與環境為核心。",
+};
+const HD_AUTH=["情感型","直覺型（脾臟）","意志力型","自我投射型","心智投射型","月亮型","薦骨型"];
+const PHASES=["身","心","靈"];
+const PH_DESC={身:"外在行動・現實格局・具體事件",心:"情緒狀態・關係模式・內在感受",靈:"靈魂課題・生命方向・深層使命"};
+const NOBLE_DICE=[["探索卡","#9B8EC4","✦"],["真相卡","#6A9EC0","◈"],["議題卡","#C8874A","❋"],["指引卡","#7A9E7E","→"],["命運之輪","#9B8EC4","⊙"],["放下代幣","#C97B84","✿"]];
+const CT={
+  探索卡:  {bg:"#F5F0FF",border:"#9B8EC4",text:"#5E4A8B",icon:"✦"},
+  真相卡:  {bg:"#EFF6FF",border:"#6A9EC0",text:"#2E5E8B",icon:"◈"},
+  貴人代幣:{bg:"#FFFBEA",border:"#C8A84B",text:"#7A5200",icon:"★"},
+  放下代幣:{bg:"#FFF0F5",border:"#C97B84",text:"#8B2A36",icon:"✿"},
+  議題卡:  {bg:"#FFF7ED",border:"#C8874A",text:"#7A3E00",icon:"❋"},
+  指引卡:  {bg:"#F0FBF4",border:"#7A9E7E",text:"#2E5E38",icon:"→"},
+  命運之輪:{bg:"#F0EEFF",border:"#9B8EC4",text:"#4A2E8B",icon:"⊙"},
+};
+const HAS_REV=new Set(["探索卡","真相卡"]);
+const IS_TOKEN=new Set(["貴人代幣","放下代幣"]);
+const isMsg=t=>!IS_TOKEN.has(t);
+const emptyPh=()=>({cards:[],nobles:0,drops:0});
+const msgCards=ph=>ph.cards.filter(c=>isMsg(c.type));
+const canAdvance=ph=>{
+  const mc=msgCards(ph),ty=new Set(mc.map(c=>c.type));
+  const hasTarot=ty.has("探索卡")||ty.has("真相卡")||ty.has("命運之輪");
+  return (hasTarot&&ty.has("議題卡")&&ty.has("指引卡")&&ph.nobles>=1)||mc.length>=7;
+};
+const atMax=ph=>msgCards(ph).length>=9;
+
+// ── 全局狀態 ──────────────────────────────────────────
+const S={
+  mode:null,         // 'home'|'host'|'player'
+  screen:"home",     // home|host_setup|host_game|host_blueprint|player_wait
+  roomCode:"",
+  playerAlias:"",    // 玩家自己的別名
+  roomData:null,
+  pollTimer:null,
+
+  // Host 遊戲狀態
+  topic:"",element:"",hdType:"",hdAuth:"",skipHD:false,
+  prevSession:"",aliases:["我"],
+  // 每個玩家的 phases：{ [alias]: [ph0,ph1,ph2] }
+  playerPhases:{},
+  // 目前選中要幫哪個玩家記錄
+  activeAlias:"我",
+  curPhase:0,
+  usedCards:[],
+  modal:null,
+  phAI:{},phAIL:{},deepG:{},deepL:{},
+  finalR:{},finalL:{},
+  expTxt:"",
+  cgDone:{},cgRemain:{},
+  collapsed:{},
+  showImport:false,importTxt:"",
+};
+
+// ── render 引擎 ──────────────────────────────────────
+function render(){ document.getElementById("app").innerHTML=buildApp(); bindAll(); }
+
+function buildApp(){
+  if(S.screen==="home") return buildHome();
+  if(S.screen==="host_setup") return buildHostSetup();
+  if(S.screen==="host_game") return buildHostGame();
+  if(S.screen==="host_blueprint") return buildBlueprint();
+  if(S.screen==="player_wait") return buildPlayerWait();
+  return "";
+}
+
+// ── HTML helpers ──────────────────────────────────────
+const esc=s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const btn=(label,cls,attrs="")=>`<button class="btn ${cls}" ${attrs}>${label}</button>`;
+const lbl=t=>`<div class="lbl">${t}</div>`;
+const card=(content,style="")=>`<div class="card" style="${style}">${content}</div>`;
+
+function tagHTML(type){
+  const t=CT[type]||{bg:"#eee",border:"#ccc",text:"#555",icon:"?"};
+  return `<span class="tag" style="background:${t.bg};color:${t.text};border:.5px solid ${t.border}">${t.icon} ${type}</span>`;
+}
+
+function cardPicker(cards,selected,colorVar,usedArr,namePrefix){
+  return `<div class="card-grid">`+cards.map((c,i)=>{
+    const used=(usedArr||[]).includes(c);
+    const sel=selected===c;
+    return `<button class="card-btn ${sel?"selected":""} ${used?"used":""}"
+      style="${sel?`border-color:${colorVar};background:${colorVar}18;color:${colorVar};`:""}"
+      ${used?"disabled":""}
+      data-action="pick-card" data-name="${esc(c)}" data-prefix="${namePrefix}">${esc(c)}</button>`;
+  }).join("")+`</div>`;
+}
+
+function suitPicker(selected,prefix){
+  return `<div class="suit-grid">`+[["1","火","#C8874A"],["2","水","#6A9EC0"],["3","風","#9B8EC4"],["4","土","#7A9E7E"]].map(([n,k,c])=>
+    `<button class="card-btn ${selected===k?"selected":""}"
+      style="${selected===k?`border-color:${c};background:${c}22;color:${c};`:""}"
+      data-action="pick-suit" data-suit="${k}" data-prefix="${prefix}">
+      <div style="font-size:14px">${n}</div>${MINOR[k].label}</button>`
+  ).join("")+`</div>`;
+}
+
+function revPicker(value,prefix){
+  return `<div style="display:flex;gap:8px">`+["正位","逆位"].map(d=>{
+    const isRev=d==="逆位";const sel=value===isRev;
+    return `<button class="card-btn ${sel?"selected":""}" style="flex:1;${sel?"border-color:var(--amber);background:#C8874A18;color:var(--amber-d);font-weight:600;":""}"
+      data-action="pick-rev" data-rev="${isRev}" data-prefix="${prefix}">${d}</button>`;
+  }).join("")+`</div>`;
+}
+
+function aliasPicker(labelTxt,value,prefix,exclude){
+  const opts=S.aliases.filter(a=>!(exclude||[]).includes(a));
+  return `<div style="margin-bottom:10px">${lbl(labelTxt)}<div style="display:flex;flex-wrap:wrap;gap:6px">`+
+    opts.map(a=>`<button style="padding:6px 12px;border-radius:20px;border:1.5px solid ${value===a?"var(--amber)":"var(--border)"};background:${value===a?"#C8874A18":"var(--white)"};color:${value===a?"var(--amber-d)":"var(--text-s)"};font-size:13px;cursor:pointer;font-weight:${value===a?600:400}"
+      data-action="pick-alias" data-alias="${esc(a)}" data-prefix="${prefix}">${esc(a)}</button>`).join("")+
+    `</div></div>`;
+}
+
+function cardTypeSelector(d,prefix){
+  const type=d.cardType||"";const name=d.name||"";const suit=d.suit||"";const gs=d.guideSuit||"";
+  let html=`<div class="grid-2" style="gap:6px;margin-bottom:8px">`+
+    ["探索卡","真相卡","議題卡","指引卡"].map(t=>
+      `<button class="card-btn ${type===t?"selected":""}" style="${type===t?"border-color:var(--lav);background:#9B8EC418;color:var(--lav-d);":""}"
+        data-action="pick-ctype" data-ctype="${t}" data-prefix="${prefix}">${t}</button>`
+    ).join("")+`</div>`;
+  if(type==="探索卡") html+=cardPicker(MAJOR,name,"#9B8EC4",S.usedCards,prefix+"_name");
+  if(type==="真相卡"){
+    html+=suitPicker(suit,prefix+"_suit");
+    if(suit) html+=cardPicker(MINOR[suit].cards,name,MINOR[suit].color,S.usedCards,prefix+"_name");
+  }
+  if(type==="議題卡") html+=`<input value="${esc(name)}" placeholder="填入議題牌名…" data-bind="${prefix}_name" style="margin-bottom:8px"/>`;
+  if(type==="指引卡"){
+    html+=`<div class="grid-2" style="gap:6px;margin-bottom:6px">`+
+      [["水","#6A9EC0"],["土","#7A9E7E"],["火","#C8874A"],["風","#9B8EC4"]].map(([k,c])=>
+        `<button class="card-btn ${gs===k?"selected":""}" style="${gs===k?`border-color:${c};background:${c}18;color:${c};`:""}"
+          data-action="pick-gsuit" data-gsuit="${k}" data-prefix="${prefix}">${GUIDE[k].label}</button>`
+      ).join("")+`</div>`;
+    if(gs) html+=cardPicker(GUIDE[gs].cards,name,GUIDE[gs].color,[],prefix+"_name");
+  }
+  if(HAS_REV.has(type)&&name) html+=`<div style="margin-bottom:8px">${lbl("牌面方向")}${revPicker(d.reversed||false,prefix+"_rev")}</div>`;
+  return html;
+}
+
+// ── 玩家資料存取 ──────────────────────────────────────
+function getPlayerPhases(alias){
+  if(!S.playerPhases[alias]) S.playerPhases[alias]=[emptyPh(),emptyPh(),emptyPh()];
+  return S.playerPhases[alias];
+}
+function getCurPh(alias){ return getPlayerPhases(alias)[S.curPhase]||emptyPh(); }
+
+// ── 畫面：首頁 ────────────────────────────────────────
+function buildHome(){
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,var(--cream),var(--parchment));display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:30px;margin-bottom:8px">✦</div>
+      <h1 class="serif" style="font-size:22px;font-weight:600;color:var(--amber-d);letter-spacing:.1em;margin-bottom:4px">答案桌遊</h1>
+      <p style="font-size:13px;color:var(--text-s)">人類圖 × 塔羅 整合解讀系統</p>
+      <div style="margin-top:8px;font-size:11px;padding:3px 12px;background:#C8874A22;color:var(--amber-d);border-radius:20px;display:inline-block;font-weight:500">✦ v8</div>
+    </div>
+    <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px">
+      ${btn("主持人・建立房間","btn btn-primary",`style="width:100%;padding:14px;font-size:15px" data-action="go-host"`)}
+      ${card(`${lbl("玩家・加入房間")}
+        <input id="join-code" placeholder="輸入房間碼，例：ROSE-7291" style="margin-bottom:8px;text-transform:uppercase"/>
+        <input id="join-name" placeholder="你的別名（需與主持人設定的一致）" style="margin-bottom:10px"/>
+        ${btn("加入房間","btn btn-secondary",`style="width:100%;padding:10px" data-action="join-room"`)}
+      `)}
+    </div>
+  </div>`;
+}
+
+// ── 畫面：主持人 Setup ────────────────────────────────
+function buildHostSetup(){
+  const aliasesHTML=S.aliases.map((a,i)=>`
+    <div style="display:flex;align-items:center;gap:4px;padding:4px 10px;background:#C8874A18;border-radius:20px;border:1px solid #C8874A44">
+      <span style="font-size:13px;color:var(--amber-d)">${esc(a)}</span>
+      ${a!=="我"?`<button style="font-size:10px;color:var(--text-f);background:none;border:none;cursor:pointer" data-action="del-alias" data-idx="${i}">✕</button>`:""}
+    </div>`).join("");
+
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,var(--cream),var(--parchment));padding:0 0 40px">
+    <div style="text-align:center;padding:32px 20px 24px">
+      <div style="font-size:26px;margin-bottom:6px">✦</div>
+      <h1 class="serif" style="font-size:20px;font-weight:600;color:var(--amber-d);letter-spacing:.1em;margin-bottom:4px">答案桌遊</h1>
+      ${S.roomCode?`<div style="font-size:12px;padding:3px 12px;background:#7A9E7E22;color:var(--sage-d);border-radius:20px;display:inline-block">主持人 ・ 房間碼：<strong>${S.roomCode}</strong></div>`:""}
+    </div>
+    <div style="max-width:480px;margin:0 auto;padding:0 16px">
+
+      ${card(`${lbl("玩家別名（含「我」，命運之輪指定用）")}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${aliasesHTML}</div>
+        <div style="display:flex;gap:8px">
+          <input id="new-alias" placeholder="輸入別名後按 Enter，例：小明" style="flex:1"/>
+          ${btn("新增","btn btn-secondary",`style="padding:8px 14px;font-size:13px;white-space:nowrap" data-action="add-alias"`)}
+        </div>
+      `,`margin-bottom:14px`)}
+
+      ${card(`${lbl("今日探索主題")}<input id="topic" value="${esc(S.topic)}" placeholder="此刻心中最想探索的是…"/>`,`margin-bottom:14px`)}
+
+      ${card(`${lbl("太陽星座元素・出發起點")}<div class="grid-2">`+
+        Object.entries(ELEM_START).map(([k,v])=>`
+          <button style="padding:12px;text-align:left;border-radius:12px;border:1.5px solid ${S.element===k?"var(--amber)":"var(--border)"};background:${S.element===k?"#C8874A18":"var(--white)"};cursor:pointer"
+            data-action="pick-element" data-el="${k}">
+            <div style="font-size:14px;font-weight:500;color:${S.element===k?"var(--amber-d)":"var(--text)"}">${v.label}</div>
+            <div style="font-size:11px;color:var(--text-f);margin-top:2px">${v.signs}</div>
+          </button>`).join("")+`</div>`,`margin-bottom:14px`)}
+
+      ${card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:13px;font-weight:500">人類圖資料</span>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-s);cursor:pointer">
+            <input type="checkbox" id="skip-hd" ${S.skipHD?"checked":""} style="width:auto;padding:0;border:none"/> 跳過，通用解讀
+          </label>
+        </div>
+        ${!S.skipHD?`
+          <div style="margin-bottom:10px">${lbl("能量類型")}<select id="hd-type"><option value="">請選擇</option>${Object.keys(HD_TYPES).map(t=>`<option value="${t}" ${S.hdType===t?"selected":""}>${t}</option>`).join("")}</select></div>
+          <div>${lbl("內在權威")}<select id="hd-auth"><option value="">請選擇</option>${HD_AUTH.map(a=>`<option value="${a}" ${S.hdAuth===a?"selected":""}>${a}</option>`).join("")}</select></div>
+          ${S.hdType?`<p style="font-size:11px;color:var(--text-s);margin-top:8px;line-height:1.6;padding:8px 10px;background:#C8874A0D;border-radius:8px">${HD_TYPES[S.hdType]}</p>`:""}
+        `:""}`,`margin-bottom:14px`)}
+
+      ${card(`${!S.showImport
+        ?`<button style="font-size:12px;color:var(--text-s);background:none;border:none;cursor:pointer" data-action="toggle-import">＋ 匯入上次解讀紀錄（選填）</button>`
+        :`${lbl("貼上上次解讀文字")}<textarea id="import-txt" style="height:72px;resize:none;font-size:12px;font-family:monospace">${esc(S.importTxt)}</textarea>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            ${btn("匯入","btn btn-secondary",`style="padding:6px 14px;font-size:12px" data-action="do-import"`)}
+            ${btn("取消","btn btn-ghost",`style="padding:6px 14px;font-size:12px" data-action="toggle-import"`)}
+          </div>`}
+        ${S.prevSession?`<p style="font-size:11px;color:var(--sage-d);margin-top:6px">✓ 上次解讀已載入</p>`:""}`,`margin-bottom:20px`)}
+
+      ${btn("開始遊戲 ✦","btn btn-primary",`style="width:100%;padding:14px;font-size:15px;letter-spacing:.06em" data-action="start-game"`)}
+    </div>
+  </div>`;
+}
+
+// ── 畫面：主持人 Game ─────────────────────────────────
+function buildHostGame(){
+  const ph=getPlayerPhases(S.activeAlias);
+  const tPh=ph[S.curPhase]||emptyPh();
+  const mc=msgCards(tPh);
+  const isMax=atMax(tPh);
+  const ready=canAdvance(tPh);
+
+  // 宇宙送牌前置
+  const gi=S.curPhase-1;
+  const prevNobles=gi>=0?(ph[gi]?.nobles||0):0;
+  const cgKey=`${S.activeAlias}_${gi}`;
+  const cgCount=prevNobles>=2?prevNobles-1:0;
+  const cgDone=S.cgDone[cgKey]||false;
+  const needCG=S.curPhase>=1&&cgCount>0&&!cgDone;
+  const cgRemain=S.cgRemain[cgKey]!=null?S.cgRemain[cgKey]:cgCount;
+
+  // 玩家切換列
+  const playerTabs=S.aliases.map(a=>`
+    <button style="padding:6px 14px;font-size:13px;border-radius:20px;border:1.5px solid ${S.activeAlias===a?"var(--amber)":"var(--border)"};background:${S.activeAlias===a?"#C8874A18":"var(--white)"};color:${S.activeAlias===a?"var(--amber-d)":"var(--text-s)"};cursor:pointer;font-weight:${S.activeAlias===a?600:400}"
+      data-action="switch-player" data-alias="${esc(a)}">${esc(a)}</button>`).join("");
+
+  // 牌陣
+  const cardsHTML=PHASES.map((_,pi)=>{
+    const piPh=ph[pi]||emptyPh();
+    if(pi!==S.curPhase&&piPh.cards.length===0) return "";
+    const isAct=pi===S.curPhase;
+    const col=S.collapsed[`${S.activeAlias}_${pi}`];
+    let html="";
+    if(!isAct){
+      html+=`<button style="width:100%;padding:8px 12px;text-align:left;background:#FFFDF9CC;border:1px solid var(--border);border-radius:10px;font-size:12px;color:var(--text-s);cursor:pointer;margin-bottom:${col?0:8}px"
+        data-action="toggle-collapse" data-alias="${esc(S.activeAlias)}" data-pi="${pi}">
+        ${col?"▶":"▼"} 【${PHASES[pi]}】${PH_DESC[PHASES[pi]]} · ${piPh.cards.length}張</button>`;
+    }
+    if(!col||isAct){
+      if(isAct&&piPh.cards.length>0) html+=`<div class="serif" style="font-size:14px;font-weight:500;color:var(--amber-d);margin-bottom:8px">本階段牌陣</div>`;
+      html+=piPh.cards.map((card,ci)=>{
+        const t=CT[card.type]||{};
+        const key=`${S.activeAlias}_${pi}_${ci}`;
+        const canDrop=isAct&&card.type!=="放下代幣"&&!card.source?.includes("給予他人");
+        return `<div style="padding:12px 14px;background:${t.bg||"var(--white)"};border:1px solid ${t.border||"var(--border)"};border-radius:14px;margin-bottom:8px;box-shadow:0 1px 6px ${t.border||"#ddd"}33">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div style="flex:1">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+                ${tagHTML(card.type)}
+                ${HAS_REV.has(card.type)&&card.reversed!==undefined?`<span style="font-size:11px;color:var(--text-f)">${card.reversed?"逆位":"正位"}</span>`:""}
+                ${card.element?`<span style="font-size:11px;color:var(--text-f)">${card.element}</span>`:""}
+              </div>
+              <div class="serif" style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:2px">${esc(card.name)}</div>
+              ${card.source?`<div style="font-size:11px;color:var(--text-f)">${esc(card.source)}</div>`:""}
+              ${card.wheelDesignated?`<div style="font-size:11px;color:var(--lav-d)">指定：${esc(card.wheelDesignated)} ｜ 得牌：${esc(card.wheelWinner)}</div>`:""}
+              ${card.nobleFor?`<div style="font-size:11px;color:var(--amber-d)">幫助：${esc(card.nobleFor)}</div>`:""}
+              ${card.nobleFrom?`<div style="font-size:11px;color:var(--amber-d)">來自：${esc(card.nobleFrom)}</div>`:""}
+              ${card.thought?`<div style="font-size:12px;color:var(--text-s);margin-top:4px;font-style:italic">「${esc(card.thought)}」</div>`:""}
+              ${card.dropReason?`<div style="font-size:12px;color:var(--rose-d);margin-top:4px;font-style:italic">放下原因：「${esc(card.dropReason)}」</div>`:""}
+            </div>
+            ${isAct?`<button style="font-size:10px;padding:3px 7px;color:var(--text-f);border:1px solid var(--border);background:transparent;border-radius:6px;cursor:pointer;margin-left:8px;flex-shrink:0"
+              data-action="remove-card" data-pi="${pi}" data-ci="${ci}">✕</button>`:""}
+          </div>
+          <button style="margin-top:10px;font-size:11px;padding:4px 10px;color:${t.text};border:1px solid ${t.border}88;background:transparent;border-radius:8px;cursor:pointer"
+            data-action="deep-guide" data-pi="${pi}" data-ci="${ci}">
+            ${S.deepL[key]?"生成中…":"深入引導 →"}
+          </button>
+          ${S.deepG[key]?`<div style="font-size:12px;color:var(--text-s);margin-top:8px;line-height:1.7;padding:10px 12px;background:var(--white);border-radius:10px;white-space:pre-wrap">${esc(S.deepG[key])}</div>`:""}
+          ${canDrop?`<div style="display:flex;justify-content:flex-end;margin-top:8px">
+            <button style="font-size:11px;padding:4px 10px;color:var(--rose-d);border:1px solid #C97B8488;background:#C97B8408;border-radius:8px;cursor:pointer"
+              data-action="open-drop" data-ci="${ci}" data-cardname="${esc(card.name)}">✿ 使用放下代幣</button>
+          </div>`:""}
+        </div>`;
+      }).join("");
+      if(isAct&&piPh.cards.length>0){
+        const aiKey=`${S.activeAlias}_p${pi}`;
+        html+=`${btn(S.phAIL[aiKey]?"解讀生成中…":`生成【${PHASES[pi]}】階段解讀`,"btn btn-secondary",
+          `style="width:100%;margin-top:4px;padding:10px" data-action="phase-ai" data-pi="${pi}" ${S.phAIL[aiKey]?"disabled":""}`)}`;
+        if(S.phAI[aiKey]) html+=`<div style="font-size:13px;line-height:1.8;color:var(--text);margin-top:10px;padding:14px;background:#C8874A0A;border:1px solid #C8874A33;border-radius:12px;white-space:pre-wrap">${esc(S.phAI[aiKey])}</div>`;
+      }
+    }
+    return `<div style="margin-bottom:12px">${html}</div>`;
+  }).join("");
+
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,var(--cream),var(--parchment))">
+    <div class="topbar">
+      <div class="topbar-inner">
+        <div>
+          <div style="font-size:12px;color:var(--text-s);font-weight:500">${esc(S.topic)}</div>
+          <div style="font-size:11px;color:var(--text-f)">${ELEM_START[S.element]?.label||""}${!S.skipHD&&S.hdType?` ・ ${S.hdType}`:""} <span style="color:var(--amber);margin-left:4px">房間：${S.roomCode}</span></div>
+        </div>
+        <div style="display:flex;gap:6px">
+          ${PHASES.map((p,i)=>`<button class="phase-dot" style="background:${i===S.curPhase?"linear-gradient(135deg,var(--amber),var(--amber-l))":i<S.curPhase?"var(--sage)":"var(--border)"};color:${i<=S.curPhase?"var(--white)":"var(--text-f)"};box-shadow:${i===S.curPhase?"0 2px 8px #C8874A55":"none"}"
+            data-action="switch-phase" data-pi="${i}">${p}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+
+    <div class="main-wrap">
+      <!-- 玩家切換 -->
+      ${card(`<div style="font-size:12px;color:var(--sage-d);font-weight:500;margin-bottom:8px">選擇要幫誰記錄</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${playerTabs}</div>`,`margin-bottom:14px;background:#7A9E7E0A;border:1px solid #7A9E7E44`)}
+
+      <!-- 宇宙送牌前置 -->
+      ${needCG?card(`<div class="serif" style="font-size:14px;font-weight:600;color:var(--amber-d);margin-bottom:4px">✦ 宇宙送牌・前置動作</div>
+        <div style="font-size:12px;color:var(--text-s);margin-bottom:10px;line-height:1.6">
+          上一階段 ${ph[S.curPhase-1]?.nobles||0} 枚貴人代幣（≥2 才觸發），<br/>進入本階段前優先選 <strong>${cgRemain}</strong> 張牌。
+        </div>
+        ${btn(`選擇宇宙送來的牌（剩餘 ${cgRemain} 張）→`,"btn btn-primary",`style="width:100%;padding:10px;font-size:13px" data-action="open-modal" data-mode="宇宙回饋"`)}`
+        ,`margin-bottom:14px;border:1px solid #C8A84B66;background:#C8A84B08`):""}
+
+      <!-- 階段狀態 -->
+      ${card(`<div class="serif" style="font-size:15px;font-weight:600;color:var(--amber-d);margin-bottom:4px">
+          【${PHASES[S.curPhase]}】${PH_DESC[PHASES[S.curPhase]]}
+          <span style="font-size:12px;font-weight:400;color:var(--text-s);margin-left:6px">（${esc(S.activeAlias)}）</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-s)">
+          訊息卡 ${mc.length}/9 ・ 貴人代幣 ${tPh.nobles} ・ 放下代幣 ${tPh.drops}
+          ${tPh.nobles>1?`<span style="color:var(--gold);margin-left:6px">★ 貴人流動 ×${tPh.nobles}</span>`:""}
+          ${isMax?`<span style="color:var(--rose-d);margin-left:6px">已達上限</span>`:""}
+        </div>
+        <div style="font-size:11px;color:var(--text-f);margin-top:4px">過關①：塔羅＋議題＋指引＋貴人代幣×1 ｜ ②任意7張 ｜ 最多9張</div>`,
+        `margin-bottom:14px;background:#C8874A0A;border:1px solid #C8874A33`)}
+
+      <!-- 格子按鈕 -->
+      ${!isMax&&!needCG?card(`<div style="font-size:12px;color:var(--text-s);margin-bottom:10px;font-weight:500">落在哪個格子？</div>
+        <div class="grid-4">
+          ${sqBtn("探索格","","#9B8EC4","open-modal","探索")}
+          ${sqBtn("真相格","","#6A9EC0","open-modal","真相")}
+          ${sqBtn("議題格","","#C8874A","open-modal","議題")}
+          ${sqBtn("指引格","","#7A9E7E","open-modal","指引")}
+        </div>
+        <div class="grid-4">
+          ${sqBtn("貴人格","我幫他人","#C8A84B","open-modal","貴人給予")}
+          ${sqBtn("貴人格","他人幫我","#C8A84B","open-modal","貴人接受")}
+          ${sqBtn("命運之輪","","#9B8EC4","open-modal","命運之輪")}
+          ${sqBtn("空白格","宇宙送牌","#B09080","open-modal","宇宙")}
+        </div>
+        <div class="grid-2">
+          ${sqBtn("放下格","取得放下代幣","#C97B84","open-modal","放下格")}
+          ${S.curPhase>0?`<button class="sq-btn" style="color:#6A9EC0;border:1px dashed #6A9EC088;background:transparent"
+            data-action="open-modal" data-mode="宇宙回饋">幫助他人後<br/><span style="font-size:10px;opacity:.75">宇宙回饋</span></button>`:""}
+        </div>`,`margin-bottom:14px`):""}
+
+      <!-- 牌陣 -->
+      ${cardsHTML}
+
+      <!-- 過關按鈕 -->
+      ${(ready||isMax)?`<div style="display:flex;gap:8px;margin-top:8px">
+        ${S.curPhase<2?btn(`進入【${PHASES[S.curPhase+1]}】階段 →`,"btn btn-primary",`style="flex:1;padding:12px" data-action="next-phase"`):""}
+        ${S.curPhase===2?btn("完成・建立答案藍圖 ✦","btn btn-sage",`style="flex:1;padding:12px" data-action="go-blueprint"`):""}
+      </div>`:""}
+    </div>
+
+    ${buildModal()}
+  </div>`;
+}
+
+function sqBtn(label,sub,color,action,mode){
+  return `<button class="sq-btn" style="border:1.5px solid ${color}44;background:${color}0E;color:${color}"
+    data-action="${action}" data-mode="${mode}">${label}${sub?`<br/><span style="font-size:10px;opacity:.75">${sub}</span>`:""}</button>`;
+}
+
+// ── Modal ─────────────────────────────────────────────
+function buildModal(){
+  const m=S.modal;
+  if(!m) return "";
+  const d=m.data||{};
+
+  let content="";
+
+  if(m.mode==="探索"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--lav-d);margin-bottom:14px">✦ 探索格・大阿爾克納</div>
+      ${lbl("選擇抽到的牌")}
+      <div style="margin-bottom:12px">${cardPicker(MAJOR,d.name,"#9B8EC4",S.usedCards,"m_name")}</div>
+      <div style="margin-bottom:12px">${lbl("牌面方向")}${revPicker(d.reversed||false,"m_rev")}</div>
+      <div style="margin-bottom:14px">${lbl("當下感想（可不填）")}<textarea data-bind="m_thought" placeholder="抽到這張牌，你第一個想到什麼？" style="height:60px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="真相"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--sky-d);margin-bottom:14px">◈ 真相格・小阿爾克納</div>
+      <div style="margin-bottom:12px">${lbl("骰子結果・選擇元素（1火 2水 3風 4土）")}${suitPicker(d.suit||"","m_suit")}</div>
+      ${d.suit?`${lbl("選擇抽到的牌")}
+        <div style="margin-bottom:12px">${cardPicker(MINOR[d.suit].cards,d.name,MINOR[d.suit].color,S.usedCards,"m_name")}</div>
+        <div style="margin-bottom:12px">${lbl("牌面方向")}${revPicker(d.reversed||false,"m_rev")}</div>
+        <div style="margin-bottom:14px">${lbl("當下感想（可不填）")}<textarea data-bind="m_thought" placeholder="抽到這張牌，你第一個想到什麼？" style="height:60px;resize:none">${esc(d.thought||"")}</textarea></div>`:""}
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="議題"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--amber-d);margin-bottom:14px">❋ 議題格</div>
+      <div style="margin-bottom:12px">${lbl("填入抽到的議題牌名")}<input data-bind="m_name" value="${esc(d.name||"")}" placeholder="例：金錢與豐盛…"/></div>
+      <div style="margin-bottom:14px">${lbl("當下感想（可不填）")}<textarea data-bind="m_thought" placeholder="看到這個議題，你的感受是？" style="height:60px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?.trim()?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="指引"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--sage-d);margin-bottom:14px">→ 指引格</div>
+      <div style="margin-bottom:12px">${lbl("選擇牌面顏色（元素）")}<div class="grid-2">`+
+      [["水","藍・水元素","#6A9EC0"],["土","綠・土元素","#7A9E7E"],["火","紅・火元素","#C8874A"],["風","紫・風元素","#9B8EC4"]].map(([k,l,c])=>
+        `<button style="padding:10px;border-radius:10px;border:1.5px solid ${d.guideSuit===k?c:"var(--border)"};background:${d.guideSuit===k?`${c}18`:"var(--white)"};color:${d.guideSuit===k?c:"var(--text-s)"};font-size:13px;cursor:pointer"
+          data-action="pick-gsuit" data-gsuit="${k}" data-prefix="m">${l}</button>`
+      ).join("")+`</div></div>
+      ${d.guideSuit?`<div style="margin-bottom:12px">${lbl("選擇抽到的牌")}${cardPicker(GUIDE[d.guideSuit].cards,d.name,GUIDE[d.guideSuit].color,[],`m_name`)}</div>
+        <div style="margin-bottom:14px">${lbl("當下感想（可不填）")}<textarea data-bind="m_thought" placeholder="這張指引給你什麼感受？" style="height:56px;resize:none">${esc(d.thought||"")}</textarea></div>`:""}
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="放下格"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--rose-d);margin-bottom:8px">✿ 放下格・取得放下代幣</div>
+      <div style="font-size:13px;color:var(--text-s);margin-bottom:14px;padding:8px 12px;background:#C97B8418;border-radius:10px">走到放下格，取得一枚放下代幣。此時機本身也有意義。</div>
+      <div style="margin-bottom:14px">${lbl("此刻的感想")}<textarea data-bind="m_thought" placeholder="走到放下格這個時機，你感受到什麼？" style="height:72px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認取得","btn btn-danger",`style="flex:1" data-action="confirm-modal"`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="放下"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--rose-d);margin-bottom:6px">✿ 使用放下代幣</div>
+      <div style="font-size:13px;color:var(--text-s);margin-bottom:14px;padding:8px 12px;background:#C97B8418;border-radius:10px">將「${esc(d.cardName)}」放回牌組</div>
+      <div style="margin-bottom:14px">${lbl("放下的原因・感想")}<textarea data-bind="m_dropReason" placeholder="為什麼選擇放下這張牌？此刻的感受是什麼？" style="height:80px;resize:none">${esc(d.dropReason||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認放下","btn btn-danger",`style="flex:1" data-action="confirm-modal"`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="貴人給予"||m.mode==="貴人接受"){
+    const isGiver=m.mode==="貴人給予";
+    const diceHTML=`<div class="grid-3" style="margin-bottom:12px">`+
+      NOBLE_DICE.map(([t,c,icon])=>
+        `<button style="padding:8px 4px;border-radius:10px;border:1.5px solid ${d.diceType===t?c:"var(--border)"};background:${d.diceType===t?`${c}22`:"var(--white)"};color:${d.diceType===t?c:"var(--text-s)"};font-size:12px;font-weight:${d.diceType===t?600:400};cursor:pointer"
+          data-action="pick-dicetype" data-dtype="${esc(t)}">${icon} ${t}</button>`
+      ).join("")+`</div>`;
+
+    let cardSection="";
+    if(d.diceType==="放下代幣"){
+      cardSection=`<div style="padding:10px 12px;background:#C97B8418;border-radius:8px;margin-bottom:10px;font-size:13px;color:var(--rose-d)">✿ 骰到放下代幣，對方取得一枚放下代幣。點確認記錄。</div>`;
+    } else if(d.diceType==="命運之輪"){
+      cardSection=`<div style="padding:8px 10px;background:#9B8EC418;border-radius:8px;margin-bottom:10px;font-size:12px;color:var(--lav-d);line-height:1.6">
+          ⊙ 骰到命運之輪。選牌→指定對象→得牌者，確認後自動記錄三方。</div>
+        ${lbl("先選牌")}${cardTypeSelector(d,"m")}
+        ${aliasPicker("指定對象（A）",d.wheelDesignated||"","m_wdes",[])}
+        ${aliasPicker("最終得牌者（B，擲骰數字最大）",d.wheelWinner||"","m_wwin",[])}
+        ${d.wheelDesignated&&d.wheelWinner?`<div style="padding:8px 10px;background:#C8874A0A;border-radius:8px;margin-bottom:8px;font-size:12px;color:var(--text-s);line-height:1.6">
+          確認後將記錄：<br/>・我 → 貴人代幣（nobles+1）<br/>${d.wheelDesignated!=="我"?`・${esc(d.wheelDesignated)} → 被指定記錄<br/>`:""}・${esc(d.wheelWinner)} → 得牌（計入訊息卡）</div>`:""}`;
+    } else if(d.diceType){
+      if(d.diceType==="探索卡") cardSection+=`<div style="margin-bottom:8px">${cardPicker(MAJOR,d.nobleName||"","#9B8EC4",S.usedCards,"m_nname")}</div>`;
+      else if(d.diceType==="真相卡") cardSection+=suitPicker(d.nobleSuit||"","m_nsuit")+(d.nobleSuit?`<div style="margin-bottom:8px">${cardPicker(MINOR[d.nobleSuit].cards,d.nobleName||"",MINOR[d.nobleSuit].color,S.usedCards,"m_nname")}</div>`:"");
+      else if(d.diceType==="議題卡") cardSection+=`<input data-bind="m_nname" value="${esc(d.nobleName||"")}" placeholder="填入議題牌名…" style="margin-bottom:8px"/>`;
+      else if(d.diceType==="指引卡") cardSection+=`<div class="grid-2" style="gap:6px;margin-bottom:8px">`+[["水","#6A9EC0"],["土","#7A9E7E"],["火","#C8874A"],["風","#9B8EC4"]].map(([k,c])=>`<button style="padding:7px;border-radius:8px;border:1.5px solid ${d.ndGSuit===k?c:"var(--border)"};background:${d.ndGSuit===k?`${c}18`:"var(--white)"};font-size:12px;cursor:pointer;color:${d.ndGSuit===k?c:"var(--text-s)"};" data-action="pick-ngsuit" data-gsuit="${k}">${GUIDE[k].label}</button>`).join("")+`</div>`+(d.ndGSuit?`<div style="margin-bottom:8px">${cardPicker(GUIDE[d.ndGSuit].cards,d.nobleName||"","#7A9E7E",S.usedCards,"m_nname")}</div>`:"");
+      if(HAS_REV.has(d.diceType)&&d.nobleName) cardSection+=`<div style="margin-bottom:8px">${lbl("牌面方向")}${revPicker(d.nobleRev||false,"m_nrev")}</div>`;
+    }
+
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--amber-d);margin-bottom:14px">
+        ${isGiver?"★ 貴人格・我幫助他人":"★ 貴人格・他人幫助我"}</div>
+      ${isGiver?aliasPicker("幫助的對象（選填）",d.nobleFor||"","m_nfor",["我"]):aliasPicker("貴人是誰（選填）",d.nobleFrom||"","m_nfrom",["我"])}
+      ${lbl("特殊骰結果")}${diceHTML}${cardSection}
+      <div style="margin-bottom:14px;margin-top:8px">${lbl("你當下的感受")}<textarea data-bind="m_thought" placeholder="${isGiver?"給予時，你自己感受到什麼？":"被幫助的瞬間，你感受到什麼？"}" style="height:56px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!canOK()?"disabled":""}`)}
+        ${btn("關閉","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="命運之輪"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--lav-d);margin-bottom:14px">⊙ 命運之輪格</div>
+      <div style="margin-bottom:10px">${lbl("情境")}<div class="grid-3">`+
+      [["自走自得","自己走到・自己得牌"],["自走他得","自己走到・他人得牌"],["他走我得","他人走到・我得牌"]].map(([k,l])=>
+        `<button style="padding:7px 4px;border-radius:10px;border:1.5px solid ${d.wheelSit===k?"var(--lav)":"var(--border)"};background:${d.wheelSit===k?"#9B8EC418":"var(--white)"};font-size:11px;cursor:pointer;color:${d.wheelSit===k?"var(--lav-d)":"var(--text-s)"};line-height:1.4"
+          data-action="pick-wheelSit" data-sit="${k}">${l}</button>`
+      ).join("")+`</div></div>
+      ${lbl("先憑感覺選牌")}${cardTypeSelector(d,"m")}
+      <div style="margin-bottom:14px;margin-top:4px">${lbl("當下感想")}<textarea data-bind="m_thought" placeholder="命運之輪轉動的瞬間，你感受到什麼？" style="height:56px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  if(m.mode==="宇宙"||m.mode==="宇宙回饋"){
+    content=`<div class="serif" style="font-size:15px;font-weight:600;color:var(--text-s);margin-bottom:14px">
+        ${m.mode==="宇宙"?"空白格・宇宙送牌":"✦ 宇宙送牌"}</div>
+      ${lbl("選擇牌卡")}${cardTypeSelector(d,"m")}
+      <div style="margin-bottom:14px;margin-top:4px">${lbl("當下感想（可不填）")}<textarea data-bind="m_thought" placeholder="宇宙給你這張牌，你感受到什麼？" style="height:56px;resize:none">${esc(d.thought||"")}</textarea></div>
+      <div style="display:flex;gap:8px">
+        ${btn("確認","btn btn-primary",`style="flex:1" data-action="confirm-modal" ${!d.name?"disabled":""}`)}
+        ${btn("取消","btn btn-ghost",`style="padding:10px 16px" data-action="close-modal"`)}
+      </div>`;
+  }
+
+  return `<div class="modal-bg" data-action="close-modal-bg">
+    <div class="modal-box"><div class="modal-handle"></div>${content}</div>
+  </div>`;
+}
+
+function canOK(){
+  const m=S.modal; if(!m) return false;
+  const d=m.data||{};
+  if(m.mode==="貴人給予"||m.mode==="貴人接受"){
+    if(!d.diceType) return false;
+    if(d.diceType==="放下代幣") return true;
+    if(d.diceType==="命運之輪") return !!(d.name&&d.wheelDesignated&&d.wheelWinner);
+    return !!(d.nobleName?.trim()||d.name?.trim());
+  }
+  return false;
+}
+
+// ── Blueprint ─────────────────────────────────────────
+function buildBlueprint(){
+  const ph=getPlayerPhases(S.activeAlias);
+  const phColors=["var(--sky-d)","var(--lav-d)","var(--sage-d)"];
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,var(--cream),var(--parchment))">
+    <div style="text-align:center;padding:32px 20px 20px">
+      <div style="font-size:24px;margin-bottom:6px">✦</div>
+      <h2 class="serif" style="font-size:20px;font-weight:600;color:var(--amber-d);margin-bottom:4px">答案藍圖</h2>
+      <p style="font-size:13px;color:var(--text-s)">${esc(S.topic)} ・ ${esc(S.activeAlias)}</p>
+    </div>
+    <div style="max-width:600px;margin:0 auto;padding:0 16px 40px">
+      ${PHASES.map((ph_,pi)=>{
+        const aiKey=`${S.activeAlias}_p${pi}`;
+        return card(`<div class="serif" style="font-size:14px;font-weight:600;color:${phColors[pi]};margin-bottom:10px">【${ph_}】${PH_DESC[ph_]}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">`+
+          ph[pi].cards.map(c=>{const t=CT[c.type]||{};return `<div style="padding:4px 10px;background:${t.bg};border:.5px solid ${t.border};border-radius:20px;font-size:12px;color:${t.text}">${t.icon} ${esc(c.name)}${HAS_REV.has(c.type)&&c.reversed!==undefined?(c.reversed?" 逆":" 正"):""}</div>`;}).join("")+
+          `</div>
+          ${btn(S.phAIL[aiKey]?"解讀生成中…":`查看【${ph_}】階段解讀`,"btn btn-secondary",`style="width:100%;padding:8px;font-size:12px" data-action="phase-ai" data-pi="${pi}" ${S.phAIL[aiKey]?"disabled":""}`)}
+          ${S.phAI[aiKey]?`<div style="font-size:13px;line-height:1.8;color:var(--text);margin-top:10px;padding:12px 14px;background:#C8874A08;border:1px solid #C8874A22;border-radius:12px;white-space:pre-wrap">${esc(S.phAI[aiKey])}</div>`:""}`,
+          `margin-bottom:14px`);
+      }).join("")}
+
+      ${card(`<div class="serif" style="font-size:15px;font-weight:600;color:var(--amber-d);margin-bottom:8px">✦ 身・心・靈 綜合解讀</div>
+        <p style="font-size:12px;color:var(--text-s);margin-bottom:12px;line-height:1.6">整合三個階段，分析整體敘事流動與深層課題，以覺察問句引導你找到自己的答案。</p>
+        ${!S.finalR[S.activeAlias]
+          ?btn(S.finalL[S.activeAlias]?"綜合解讀生成中，請稍候…":"生成身心靈綜合解讀 ✦","btn btn-primary",`style="width:100%;padding:12px;font-size:14px" data-action="final-ai" ${S.finalL[S.activeAlias]?"disabled":""}`)
+          :`<div style="font-size:13px;line-height:1.8;color:var(--text);white-space:pre-wrap">${esc(S.finalR[S.activeAlias])}</div>`}`,
+        `margin-bottom:14px;border:1px solid #C8874A55;background:#C8874A06`)}
+
+      ${card(`${!S.expTxt
+        ?btn("整理解讀紀錄（供複製儲存）","btn btn-secondary",`style="width:100%;padding:10px" data-action="build-export"`)
+        :`<div style="font-size:12px;color:var(--text-s);margin-bottom:6px">請全選後複製儲存：</div>
+          <textarea readonly onclick="this.select()" style="height:160px;font-size:11px;font-family:monospace;resize:none;background:var(--parchment)">${esc(S.expTxt)}</textarea>`}`,
+        `margin-bottom:14px`)}
+
+      ${btn("開始新一場遊戲","btn btn-ghost",`style="width:100%;padding:10px" data-action="new-game"`)}
+    </div>
+  </div>`;
+}
+
+// ── 玩家等待畫面 ──────────────────────────────────────
+function buildPlayerWait(){
+  const tp=S.thoughtPrompt;
+  const myPhs=S.myPhases||[emptyPh(),emptyPh(),emptyPh()];
+  const hasCards=myPhs.some(p=>p.cards?.length>0);
+
+  return `<div style="min-height:100vh;background:linear-gradient(160deg,var(--cream),var(--parchment));display:flex;flex-direction:column;align-items:center;padding:40px 20px">
+    <div style="font-size:24px;margin-bottom:10px">✦</div>
+    <h2 class="serif" style="font-size:18px;color:var(--amber-d);margin-bottom:4px">已加入房間</h2>
+    <div style="font-size:15px;color:var(--text-s);margin-bottom:4px;font-weight:500;letter-spacing:.08em">${S.roomCode}</div>
+    <div style="font-size:13px;color:var(--text-f);margin-bottom:20px">你好，${esc(S.playerAlias)}</div>
+
+    ${tp?card(`<div class="serif" style="font-size:14px;font-weight:600;color:var(--amber-d);margin-bottom:10px">✦ 抽到了「${esc(tp.cardName)}」</div>
+      ${(tp.prompts||["當下感想"]).map((p,i)=>`
+        <div style="margin-bottom:10px">${lbl(p)}<textarea id="tp_${i}" placeholder="填入你的感受…" style="height:60px;resize:none"></textarea></div>`).join("")}
+      <div style="display:flex;gap:8px">
+        ${btn("送出感想","btn btn-primary",`style="flex:1;padding:8px;font-size:13px" data-action="submit-thought"`)}
+        ${btn("跳過","btn btn-ghost",`style="padding:8px 14px;font-size:13px" data-action="skip-thought"`)}
+      </div>`,`width:100%;max-width:400px;border:1px solid #C8874A55;background:#C8874A08;margin-bottom:16px`):""}
+
+    ${card(`
+      ${hasCards?PHASES.map((_,pi)=>{
+        const p=myPhs[pi]; if(!p?.cards?.length) return "";
+        return `<div style="margin-bottom:8px">
+          <div style="font-size:12px;color:var(--text-s);margin-bottom:4px">【${PHASES[pi]}】</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px">`+
+          p.cards.map(c=>{const t=CT[c.type]||{};return `<div style="padding:3px 8px;background:${t.bg};border:.5px solid ${t.border};border-radius:20px;font-size:11px;color:${t.text}">${t.icon} ${esc(c.name)}</div>`;}).join("")+
+          `</div></div>`;
+      }).join(""):`<div style="font-size:12px;color:var(--text-f);text-align:center">等待主持人開始記錄…</div>`}
+    `,`width:100%;max-width:400px`)}
+  </div>`;
+}
+
+// ── AI ────────────────────────────────────────────────
+function buildSys(){
+  const hd=S.skipHD?"（不納入人類圖）":`類型：${S.hdType||"未填"}，權威：${S.hdAuth||"未填"}。${HD_TYPES[S.hdType]||""}`;
+  const prev=S.prevSession?`\n上次背景：${S.prevSession}`:"";
+  return `你是整合答案桌遊、塔羅與人類圖的深度引導師。語言：繁體中文。
+人類圖：${hd}${prev}
+主題：${S.topic}｜元素起點：${S.element}象
+原則：1.人類圖底層邏輯 2.探索卡「理氣像數」3.真相卡「問題+元素+數字」4.指引卡四元素 5.抽牌順序敘事 6.貴人代幣給予/接受流動 7.放下代幣真正放下vs逃避 8.命運之輪主動vs被動 9.宇宙回饋特別標注 10.結尾只拋2-3個覺察問句，不給結論，語氣溫暖有深度`;
+}
+async function callAI(msg){
+  const res=await fetch(ANTH,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1200,system:buildSys(),messages:[{role:"user",content:msg}]})});
+  if(!res.ok){if(res.status===429)throw new Error("API 使用量達上限，請稍後幾分鐘再試");throw new Error(`HTTP ${res.status}`);}
+  const data=await res.json();return data.content?.map(b=>b.text||"").join("")||"（無回應）";
+}
+function descCard(c){
+  let s=`${c.type}「${c.name}」`;
+  if(HAS_REV.has(c.type)&&c.reversed!==undefined) s+=c.reversed?"（逆位）":"（正位）";
+  if(c.element) s+=`【${c.element}】`;
+  if(c.source) s+=`｜來源：${c.source}`;
+  if(c.wheelDesignated) s+=`｜指定：${c.wheelDesignated}`;
+  if(c.wheelWinner) s+=`｜得牌：${c.wheelWinner}`;
+  if(c.thought) s+=`｜感想：「${c.thought}」`;
+  return s;
+}
+
+// ── 確認 Modal ────────────────────────────────────────
+function confirmModal(){
+  const m=S.modal; if(!m) return;
+  const d=m.data||{};
+  const pi=S.curPhase;
+  const alias=S.activeAlias;
+
+  const addCard=(a,ph,card)=>{
+    const phs=getPlayerPhases(a);
+    phs[ph].cards.push(card);
+    if(isMsg(card.type)&&card.name&&!S.usedCards.includes(card.name)) S.usedCards.push(card.name);
+    // 推感想通知到 Firebase
+    if(S.roomCode&&a!=="我"){
+      const pid=S.playerPids?.[a];
+      if(pid){
+        fbUpd(`rooms/${S.roomCode}/players/${pid}`,{
+          phases:phs,
+          thoughtPrompt:{cardIdx:phs[ph].cards.length-1,cardName:card.name,prompts:card._thoughtPrompts||["當下感想"],ts:Date.now()}
+        });
+      }
+    }
+    // 同步自己的感想（alias==="我" 不需要 Firebase 感想）
+  };
+  const updNobles=(a,ph,delta)=>{ getPlayerPhases(a)[ph].nobles+=delta; };
+
+  const getElem=()=>d.suit?MINOR[d.suit]?.label:(d.guideSuit?GUIDE[d.guideSuit]?.label:"");
+
+  if(m.mode==="探索"){
+    addCard(alias,pi,{type:"探索卡",name:d.name,reversed:d.reversed||false,thought:d.thought||"",source:"探索格"});
+  } else if(m.mode==="真相"){
+    addCard(alias,pi,{type:"真相卡",name:d.name,reversed:d.reversed||false,thought:d.thought||"",element:MINOR[d.suit]?.label,source:"真相格"});
+  } else if(m.mode==="議題"){
+    addCard(alias,pi,{type:"議題卡",name:d.name,thought:d.thought||"",source:"議題格"});
+  } else if(m.mode==="指引"){
+    addCard(alias,pi,{type:"指引卡",name:d.name,thought:d.thought||"",element:GUIDE[d.guideSuit]?.label,source:"指引格"});
+  } else if(m.mode==="放下格"){
+    getPlayerPhases(alias)[pi].drops++;
+    addCard(alias,pi,{type:"放下代幣",name:"放下格代幣",thought:d.thought||"",source:"放下格－時機"});
+  } else if(m.mode==="放下"){
+    const phs=getPlayerPhases(alias);
+    const card=phs[pi].cards[d.cardIdx];
+    if(card&&isMsg(card.type)&&card.name) S.usedCards=S.usedCards.filter(c=>c!==card.name);
+    phs[pi].cards.splice(d.cardIdx,1);
+    phs[pi].drops++;
+    addCard(alias,pi,{type:"放下代幣",name:`放下：${d.cardName}`,dropCard:d.cardName,dropReason:d.dropReason||"",source:"使用放下代幣"});
+  } else if(m.mode==="貴人給予"||m.mode==="貴人接受"){
+    const isGiver=m.mode==="貴人給予";
+    if(d.diceType==="命運之輪"){
+      confirmWheelTriparty(d,pi,alias,addCard,updNobles); S.modal=null; syncToFirebase(); render(); return;
+    }
+    if(d.diceType==="放下代幣"){
+      getPlayerPhases(alias)[pi].drops++;
+      addCard(alias,pi,{type:"放下代幣",name:"貴人骰－放下代幣",thought:d.thought||"",nobleFor:d.nobleFor||"",nobleFrom:d.nobleFrom||"",source:isGiver?"貴人格－給予放下代幣":"貴人格－收到放下代幣"});
+      if(isGiver) updNobles(alias,pi,1);
+    } else {
+      const nm=d.nobleName||d.name||"";
+      const elem=d.nobleSuit?MINOR[d.nobleSuit]?.label:(d.ndGSuit?GUIDE[d.ndGSuit]?.label:"");
+      if(isGiver){
+        addCard(alias,pi,{type:"貴人代幣",name:nm,reversed:d.nobleRev||false,nobleFor:d.nobleFor||"",source:"貴人格－我給予他人",diceType:d.diceType,_thoughtPrompts:["給予當下，自己的感受"]});
+        updNobles(alias,pi,1);
+      } else {
+        addCard(alias,pi,{type:d.diceType,name:nm,reversed:d.nobleRev||false,element:elem,nobleFrom:d.nobleFrom||"",source:"貴人格－他人給我牌（計入訊息卡）",_thoughtPrompts:["收到這張牌的感受"]});
+      }
+    }
+  } else if(m.mode==="命運之輪"){
+    addCard(alias,pi,{type:d.cardType||"探索卡",name:d.name,reversed:d.reversed||false,element:getElem(),source:`命運之輪格・${d.wheelSit||""}`,thought:d.thought||"",_thoughtPrompts:["命運之輪轉動的感受"]});
+  } else if(m.mode==="宇宙"||m.mode==="宇宙回饋"){
+    const src=m.mode==="宇宙"?"空白格－宇宙送牌":"宇宙送牌前置";
+    addCard(alias,pi,{type:d.cardType||"探索卡",name:d.name,reversed:d.reversed||false,thought:d.thought||"",element:getElem(),source:src});
+    if(m.mode==="宇宙回饋"){
+      const cgKey=`${alias}_${pi-1}`;
+      if(S.cgRemain[cgKey]==null) S.cgRemain[cgKey]=(getPlayerPhases(alias)[pi-1]?.nobles||0)-1;
+      S.cgRemain[cgKey]--;
+      if(S.cgRemain[cgKey]<=0) S.cgDone[cgKey]=true;
+    }
+  }
+
+  S.modal=null;
+  syncToFirebase();
+  render();
+}
+
+function confirmWheelTriparty(d,pi,myAlias,addCard,updNobles){
+  const cardName=d.name||"";const cardType=d.cardType||"探索卡";
+  const reversed=d.reversed||false;const designated=d.wheelDesignated||"";const winner=d.wheelWinner||"";
+  const elem=d.suit?MINOR[d.suit]?.label:(d.guideSuit?GUIDE[d.guideSuit]?.label:"");
+
+  // [1] 我：貴人代幣
+  addCard(myAlias,pi,{type:"貴人代幣",name:cardName,source:`貴人格命運之輪→指定${designated}，${winner}得牌`,wheelDesignated:designated,wheelWinner:winner,_thoughtPrompts:["給予當下的感受"]});
+  updNobles(myAlias,pi,1);
+
+  // [2] A（被指定，若非我）：記錄被指定事件
+  if(designated&&designated!==myAlias&&designated!=="我"){
+    const aIsWinner=winner===designated;
+    addCard(designated,pi,{
+      type:"貴人代幣",name:cardName,
+      source:aIsWinner?`貴人命運之輪・被指定且得牌（來自${myAlias}）`:`貴人命運之輪・被指定但${winner}得牌（來自${myAlias}）`,
+      wheelDesignated:designated,wheelWinner:winner,
+      _thoughtPrompts:aIsWinner?["被指定的感受","得到這張牌的感受","這張牌自己有共鳴嗎"]:["被指定的感受","牌被拿走的感受","那張牌自己有沒有共鳴"],
+    });
+  }
+
+  // [3] B（得牌者）：計入訊息卡
+  const bAlias=winner;
+  if(bAlias&&bAlias!==designated){
+    addCard(bAlias,pi,{
+      type:cardType,name:cardName,reversed,element:elem,
+      source:`命運之輪得牌（${designated}被指定，你得牌）`,
+      wheelDesignated:designated,wheelWinner:winner,
+      _thoughtPrompts:["得到這張牌的感受","這張牌帶給你什麼共鳴"],
+    });
+  } else if(bAlias===designated&&bAlias!==myAlias&&bAlias!=="我"){
+    // A=B，訊息卡也在A那
+    addCard(bAlias,pi,{
+      type:cardType,name:cardName,reversed,element:elem,
+      source:"命運之輪得牌（計入訊息卡）",
+      _thoughtPrompts:["這張牌帶給你什麼感受"],
+    });
+  }
+  // 若 winner==="我" 或 winner===myAlias，加到自己
+  if(winner===myAlias||winner==="我"){
+    addCard(myAlias,pi,{
+      type:cardType,name:cardName,reversed,element:elem,
+      source:"命運之輪・自己得牌",
+      _thoughtPrompts:["得到這張牌的感受"],
+    });
+  }
+}
+
+// ── Firebase 同步 ─────────────────────────────────────
+async function syncToFirebase(){
+  if(!S.roomCode) return;
+  // 更新全局已用牌
+  await fbSet(`rooms/${S.roomCode}/usedCards`,S.usedCards);
+  // 更新每個玩家的 phases
+  const players=await fbGet(`rooms/${S.roomCode}/players`)||{};
+  for(const [pid,pdata] of Object.entries(players)){
+    const alias=pdata.name;
+    if(S.playerPhases[alias]){
+      await fbSet(`rooms/${S.roomCode}/players/${pid}/phases`,S.playerPhases[alias]);
+    }
+  }
+}
+
+// ── 事件綁定 ──────────────────────────────────────────
+function bindAll(){
+  // 即時輸入 data-bind
+  document.querySelectorAll("[data-bind]").forEach(el=>{
+    el.addEventListener("input",e=>{
+      const key=e.target.dataset.bind;
+      if(key==="m_thought"&&S.modal){ S.modal.data.thought=e.target.value; return; }
+      if(key==="m_name"&&S.modal){ S.modal.data.name=e.target.value; render(); return; }
+      if(key==="m_nname"&&S.modal){ S.modal.data.nobleName=e.target.value; return; }
+      if(key==="m_dropReason"&&S.modal){ S.modal.data.dropReason=e.target.value; return; }
+    });
+  });
+
+  // 所有 data-action
+  document.addEventListener("click",handleClick,{once:true});
+}
+
+function handleClick(e){
+  const el=e.target.closest("[data-action]");
+  if(!el){ document.addEventListener("click",handleClick,{once:true}); return; }
+  const action=el.dataset.action;
+
+  // 儲存輸入值（在 action 處理前）
+  saveInputs();
+
+  switch(action){
+    case "go-host": goHost(); break;
+    case "join-room": joinRoom(); break;
+    case "add-alias":{
+      const v=document.getElementById("new-alias")?.value.trim();
+      if(v&&!S.aliases.includes(v)){S.aliases.push(v);} render(); break;
+    }
+    case "del-alias": S.aliases.splice(Number(el.dataset.idx),1); render(); break;
+    case "pick-element": S.element=el.dataset.el; render(); break;
+    case "toggle-import": S.showImport=!S.showImport; render(); break;
+    case "do-import": S.prevSession=(S.importTxt||"").slice(0,300); S.showImport=false; render(); break;
+    case "start-game": startGame(); break;
+    case "switch-player": S.activeAlias=el.dataset.alias; render(); break;
+    case "switch-phase": S.curPhase=Number(el.dataset.pi); render(); break;
+    case "next-phase": S.curPhase++; render(); break;
+    case "go-blueprint": S.screen="host_blueprint"; render(); break;
+    case "open-modal": openModal(el.dataset.mode); break;
+    case "close-modal": S.modal=null; render(); break;
+    case "close-modal-bg": if(e.target===el){S.modal=null;render();} break;
+    case "confirm-modal": confirmModal(); break;
+    case "remove-card":{
+      const pi=Number(el.dataset.pi),ci=Number(el.dataset.ci);
+      const phs=getPlayerPhases(S.activeAlias);
+      const card=phs[pi].cards[ci];
+      if(card&&isMsg(card.type)&&card.name) S.usedCards=S.usedCards.filter(c=>c!==card.name);
+      phs[pi].cards.splice(ci,1);
+      syncToFirebase(); render(); break;
+    }
+    case "open-drop": openModal("放下",{cardIdx:Number(el.dataset.ci),cardName:el.dataset.cardname}); break;
+    case "toggle-collapse":{
+      const k=`${el.dataset.alias}_${el.dataset.pi}`;
+      S.collapsed[k]=!S.collapsed[k]; render(); break;
+    }
+    case "phase-ai": runPhaseAI(Number(el.dataset.pi)); break;
+    case "final-ai": runFinalAI(); break;
+    case "deep-guide": runDeepGuide(Number(el.dataset.pi),Number(el.dataset.ci)); break;
+    case "build-export": buildExport(); render(); break;
+    case "new-game": newGame(); break;
+    // Modal picks
+    case "pick-card":{
+      if(!S.modal) break;
+      const prefix=el.dataset.prefix||"m";
+      if(prefix==="m_name") S.modal.data.name=el.dataset.name;
+      else if(prefix==="m_nname") S.modal.data.nobleName=el.dataset.name;
+      render(); break;
+    }
+    case "pick-suit":{
+      if(!S.modal) break;
+      const prefix=el.dataset.prefix||"m_suit";
+      if(prefix.includes("nsuit")||el.dataset.prefix==="m_nsuit") S.modal.data.nobleSuit=el.dataset.suit;
+      else { S.modal.data.suit=el.dataset.suit; S.modal.data.name=""; }
+      render(); break;
+    }
+    case "pick-rev":{
+      if(!S.modal) break;
+      const isRev=el.dataset.rev==="true";
+      if(el.dataset.prefix==="m_nrev") S.modal.data.nobleRev=isRev;
+      else S.modal.data.reversed=isRev;
+      render(); break;
+    }
+    case "pick-alias":{
+      if(!S.modal) break;
+      const prefix=el.dataset.prefix;
+      if(prefix==="m_wdes") S.modal.data.wheelDesignated=el.dataset.alias;
+      else if(prefix==="m_wwin") S.modal.data.wheelWinner=el.dataset.alias;
+      else if(prefix==="m_nfor") S.modal.data.nobleFor=el.dataset.alias;
+      else if(prefix==="m_nfrom") S.modal.data.nobleFrom=el.dataset.alias;
+      render(); break;
+    }
+    case "pick-ctype":{
+      if(!S.modal) break;
+      S.modal.data.cardType=el.dataset.ctype; S.modal.data.name=""; S.modal.data.suit=""; S.modal.data.guideSuit="";
+      render(); break;
+    }
+    case "pick-gsuit":{
+      if(!S.modal) break;
+      S.modal.data.guideSuit=el.dataset.gsuit; S.modal.data.name=""; render(); break;
+    }
+    case "pick-ngsuit":{
+      if(!S.modal) break;
+      S.modal.data.ndGSuit=el.dataset.gsuit; S.modal.data.nobleName=""; render(); break;
+    }
+    case "pick-dicetype":{
+      if(!S.modal) break;
+      S.modal.data.diceType=el.dataset.dtype; S.modal.data.nobleName=""; S.modal.data.name=""; render(); break;
+    }
+    case "pick-wheelSit":{
+      if(!S.modal) break;
+      S.modal.data.wheelSit=el.dataset.sit; render(); break;
+    }
+    case "submit-thought": submitThought(); break;
+    case "skip-thought": skipThought(); break;
+  }
+  document.addEventListener("click",handleClick,{once:true});
+}
+
+function saveInputs(){
+  const t=document.getElementById("topic"); if(t) S.topic=t.value;
+  const hdt=document.getElementById("hd-type"); if(hdt) S.hdType=hdt.value;
+  const hda=document.getElementById("hd-auth"); if(hda) S.hdAuth=hda.value;
+  const shd=document.getElementById("skip-hd"); if(shd) S.skipHD=shd.checked;
+  const imp=document.getElementById("import-txt"); if(imp) S.importTxt=imp.value;
+  const na=document.getElementById("new-alias"); if(na&&na.id) {}// handled elsewhere
+  if(S.modal){
+    const mt=document.querySelector("[data-bind='m_thought']"); if(mt) S.modal.data.thought=mt.value;
+    const mn=document.querySelector("[data-bind='m_name']"); if(mn) S.modal.data.name=mn.value;
+    const mnn=document.querySelector("[data-bind='m_nname']"); if(mnn) S.modal.data.nobleName=mnn.value;
+    const mdr=document.querySelector("[data-bind='m_dropReason']"); if(mdr) S.modal.data.dropReason=mdr.value;
+  }
+}
+
+function openModal(mode,extra={}){
+  S.modal={mode,data:{reversed:false,thought:"",name:"",cardType:"",suit:"",guideSuit:"",...extra}};
+  render();
+}
+
+// ── AI 函式 ──────────────────────────────────────────
+async function runPhaseAI(pi){
+  const alias=S.activeAlias;
+  const key=`${alias}_p${pi}`;
+  S.phAIL[key]=true; render();
+  try{
+    const ph=getPlayerPhases(alias);
+    const d=ph[pi].cards.map((c,i)=>`第${i+1}張：${descCard(c)}`).join("\n");
+    S.phAI[key]=await callAI(`請針對【${PHASES[pi]}】階段（${PH_DESC[PHASES[pi]]}）進行解讀：\n\n${d}\n\n貴人代幣：${ph[pi].nobles}個｜放下代幣：${ph[pi].drops}個`);
+  }catch(e){S.phAI[key]=`⚠ ${e.message}`;}
+  S.phAIL[key]=false; render();
+}
+
+async function runFinalAI(){
+  const alias=S.activeAlias;
+  S.finalL[alias]=true; render();
+  try{
+    const ph=getPlayerPhases(alias);
+    const all=PHASES.map((p,pi)=>`【${p}】${PH_DESC[p]}\n${ph[pi].cards.map((c,i)=>`  第${i+1}張：${descCard(c)}`).join("\n")}\n貴人代幣：${ph[pi].nobles}｜放下代幣：${ph[pi].drops}`).join("\n\n");
+    S.finalR[alias]=await callAI(`請整合三個階段進行完整答案藍圖綜合解讀：\n\n${all}\n\n分析[身][心][靈]整體敘事、跨階段轉折、第一與最後一張牌的因果、貴人與放下的深層意涵。結尾以2-3個覺察問句收尾，不給結論。`);
+  }catch(e){S.finalR[alias]=`⚠ ${e.message}`;}
+  S.finalL[alias]=false; render();
+}
+
+async function runDeepGuide(pi,ci){
+  const alias=S.activeAlias;
+  const key=`${alias}_${pi}_${ci}`;
+  S.deepL[key]=true; render();
+  try{
+    const ph=getPlayerPhases(alias);
+    const card=ph[pi].cards[ci];
+    const allBg=ph.flatMap((p,pIdx)=>p.cards.map((c,cIdx)=>`【${PHASES[pIdx]}】第${cIdx+1}張：${descCard(c)}`)).join("\n");
+    S.deepG[key]=await callAI(`整體牌陣背景：\n${allBg}\n\n針對【${PHASES[pi]}】階段的${descCard(card)}，結合整體脈絡，生成3個深入覺察引導問題。只給問題，不給答案。`);
+  }catch(e){S.deepG[key]=`⚠ ${e.message}`;}
+  S.deepL[key]=false; render();
+}
+
+function buildExport(){
+  const alias=S.activeAlias;
+  const ph=getPlayerPhases(alias);
+  S.expTxt=[
+    `答案桌遊解讀紀錄 ── ${alias}`,
+    `日期：${new Date().toLocaleDateString("zh-TW")}`,
+    `主題：${S.topic}`,`元素：${S.element}象`,
+    S.skipHD?"":(`人類圖：${S.hdType} / ${S.hdAuth}`),
+    ...PHASES.map((p,pi)=>[`\n═══【${p}】═══`,...ph[pi].cards.map((c,i)=>`  ${i+1}. ${descCard(c)}`),S.phAI[`${alias}_p${pi}`]?`\nAI解讀：\n${S.phAI[`${alias}_p${pi}`]}`:""].join("\n")),
+    S.finalR[alias]?`\n═══ 綜合解讀 ═══\n${S.finalR[alias]}`:"",
+  ].filter(Boolean).join("\n");
+}
+
+function newGame(){
+  S.screen="host_setup"; S.topic=""; S.element=""; S.hdType=""; S.hdAuth=""; S.skipHD=false;
+  S.prevSession=""; S.playerPhases={}; S.activeAlias="我"; S.curPhase=0; S.usedCards=[];
+  S.phAI={}; S.phAIL={}; S.deepG={}; S.deepL={}; S.finalR={}; S.finalL={};
+  S.expTxt=""; S.cgDone={}; S.cgRemain={}; S.collapsed={};
+  S.aliases=["我"];
+  render();
+}
+
+// ── 主持人流程 ─────────────────────────────────────────
+async function goHost(){
+  S.mode="host"; S.screen="host_setup";
+  render();
+  // 背景建立 Firebase 房間
+  const ok=await fbTest();
+  if(ok){
+    const code=genCode();
+    const created=await fbSet(`rooms/${code}`,{meta:{created:Date.now()},players:{},usedCards:[]});
+    if(created){
+      S.roomCode=code;
+      startPolling();
+      render();
+    }
+  }
+}
+
+function startGame(){
+  if(!S.topic||!S.element){alert("請填寫主題並選擇元素起點");return;}
+  // 初始化所有玩家的 phases
+  S.aliases.forEach(a=>{ if(!S.playerPhases[a]) S.playerPhases[a]=[emptyPh(),emptyPh(),emptyPh()]; });
+  S.activeAlias=S.aliases[0]||"我";
+  S.screen="host_game";
+  render();
+}
+
+// ── 玩家流程 ──────────────────────────────────────────
+async function joinRoom(){
+  const code=document.getElementById("join-code")?.value.trim().toUpperCase();
+  const name=document.getElementById("join-name")?.value.trim();
+  if(!code||!name){alert("請輸入房間碼與別名");return;}
+  const exists=await fbGet(`rooms/${code}/meta`);
+  if(!exists){alert("找不到房間，請確認房間碼");return;}
+  // 找到對應 pid 或建立新的
+  const players=await fbGet(`rooms/${code}/players`)||{};
+  let pid=Object.entries(players).find(([,p])=>p.name===name)?.[0];
+  if(!pid){
+    pid=name+"_"+Date.now();
+    await fbSet(`rooms/${code}/players/${pid}`,{name,joined:Date.now(),phases:[emptyPh(),emptyPh(),emptyPh()]});
+  }
+  S.roomCode=code; S.playerAlias=name; S.myPid=pid;
+  S.mode="player"; S.screen="player_wait";
+  startPlayerPolling();
+  render();
+}
+
+async function submitThought(){
+  const tp=S.thoughtPrompt;
+  if(!tp) return;
+  const thoughts=(tp.prompts||["當下感想"]).map((_,i)=>document.getElementById(`tp_${i}`)?.value||"");
+  const combined=thoughts.map((t,i)=>`${(tp.prompts||["感想"])[i]}：${t}`).join(" / ");
+  // 更新 Firebase 該張牌的感想
+  const ph=S.myPhases||[];
+  const curPh=0; // 找最新階段
+  let updated=false;
+  for(let pi=2;pi>=0;pi--){
+    const cards=ph[pi]?.cards||[];
+    if(cards.length>tp.cardIdx){
+      const nc=[...cards]; nc[tp.cardIdx]={...nc[tp.cardIdx],thought:combined};
+      ph[pi]={...ph[pi],cards:nc};
+      await fbSet(`rooms/${S.roomCode}/players/${S.myPid}/phases/${pi}/cards`,nc);
+      updated=true; break;
+    }
+  }
+  await fbSet(`rooms/${S.roomCode}/players/${S.myPid}/thoughtPrompt`,null);
+  S.thoughtPrompt=null;
+  render();
+}
+
+async function skipThought(){
+  await fbSet(`rooms/${S.roomCode}/players/${S.myPid}/thoughtPrompt`,null);
+  S.thoughtPrompt=null;
+  render();
+}
+
+// ── Polling ───────────────────────────────────────────
+function startPolling(){
+  if(S.pollTimer) clearInterval(S.pollTimer);
+  S.pollTimer=setInterval(async()=>{
+    if(!S.roomCode) return;
+    const data=await fbGet(`rooms/${S.roomCode}`);
+    if(!data) return;
+    // 同步已用牌
+    if(data.usedCards) S.usedCards=data.usedCards;
+    // 記錄玩家 pid 對應
+    if(!S.playerPids) S.playerPids={};
+    Object.entries(data.players||{}).forEach(([pid,p])=>{ S.playerPids[p.name]=pid; });
+  },3000);
+}
+
+function startPlayerPolling(){
+  if(S.pollTimer) clearInterval(S.pollTimer);
+  S.pollTimer=setInterval(async()=>{
+    if(!S.roomCode||!S.myPid) return;
+    const data=await fbGet(`rooms/${S.roomCode}/players/${S.myPid}`);
+    if(!data) return;
+    S.myPhases=data.phases||[emptyPh(),emptyPh(),emptyPh()];
+    const newTp=data.thoughtPrompt;
+    const hasNew=newTp&&(!S.thoughtPrompt||newTp.ts!==S.thoughtPrompt?.ts);
+    if(hasNew) S.thoughtPrompt=newTp;
+    render();
+  },2000);
+}
+
+// ── Init ──────────────────────────────────────────────
+S.screen="home";
+render();
+</script>
+</body>
+</html>
